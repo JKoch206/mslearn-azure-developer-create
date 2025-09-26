@@ -1,12 +1,50 @@
 #!/bin/bash
-rg="rg-rtvexercise" # Replace with your resource group
-location="eastus2" # Or a location near you
-acr_name="acrrealtime109" # Needs to be unique
-appsvc_plan="rtv-app-plan-6" # Needs to be unique
-webapp_name="rtv-webapp-6" # Needs to be unique
+
+# Script to deploy the Flask app to Azure App Service using a container from ACR
+# and provision AI Foundry with GPT Realtime model using AZD.
+
+# Only change the rg and location variables below if needed.
+
+rg="rg-rtvexercise2" # Replace with your resource group
+location="swedencentral" # Or a location near you
+
+# Don't change anything below this line unless you know what you're doing.
+
+# Use the current console username plus a short 4-char deterministic hash to set service names.
+user_name="$(whoami 2>/dev/null || echo user)"
+
+# Sanitize username: lowercase and remove hyphens (strip '-' from the username)
+# Sanitize username: lowercase and remove non-alphanumeric characters
+full_safe_user=$(printf "%s" "$user_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+if [ -z "$full_safe_user" ]; then
+    full_safe_user="user"
+fi
+
+# Truncate for human-readable resource prefixes (8 chars)
+safe_user=${full_safe_user:0:8}
+
+# 4-char hash from the full sanitized username (preserves uniqueness even if truncated)
+short_hash=$(printf "%s" "$full_safe_user" | sha1sum | awk '{print $1}' | cut -c1-4)
+
+# Build ACR name by concatenating truncated username + hash + 'acr' (no hyphens)
+acr_name="${safe_user}${short_hash}acr"
+
+# Ensure ACR name starts with a letter; prepend 'a' if it doesn't
+if ! [[ $acr_name =~ ^[a-z] ]]; then
+    acr_name="a${acr_name}"
+fi
+
+# Ensure minimum length 5 (ACR requires 5-50 chars). Pad with 'a' if too short.
+while [ ${#acr_name} -lt 5 ]; do
+    acr_name="${acr_name}a"
+done
+
+# App Service plan and webapp (hyphens allowed)
+appsvc_plan="${safe_user}-appplan-${short_hash}"
+webapp_name="${safe_user}-webapp-${short_hash}"
 image="rt-voice"
 tag="v1"
-azd_env_name="gpt-realtime-22" # Unique AZD environment name
+azd_env_name="gpt-realtime" # Unique AZD environment name
 
 clear
 echo "Starting deployment with AZD provisioning + App Service, takes about 15 minutes..."
@@ -96,6 +134,7 @@ while [ $retry_count -lt $max_retries ]; do
         fi
     fi
 done
+
 
 if [ $retry_count -eq $max_retries ]; then
     echo "ERROR: Failed to build image after $max_retries attempts"
